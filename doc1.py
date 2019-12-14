@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import math
 import multiprocessing
 import csv
+#from doc2 import Simulate_Once
 
 def Read_in_csv(filename):
     csv_file=open(filename)    #打开文件  
@@ -154,6 +155,7 @@ def CalculateClusterScore(cols, rows, currdata):
 
 
 def Predict_One_Entry(row, col, current_data):
+    row_threshold = 0.8
     currdata = current_data.copy()
     #print("current data:\n", currdata)
     potential_labels = []
@@ -242,6 +244,14 @@ def Predict_One_Entry(row, col, current_data):
                                 break
                         if not tag:
                             updated_cluster_rows.remove(row_)
+
+                if len(updated_cluster_rows) < row_threshold * len(currdata):
+                    continue
+
+
+
+                # need change, add threshold!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                
 #--------------------------------------------------------------------------------------------------
 # judge if col_ has at least one coobservation with col2 in cluster
                 
@@ -466,7 +476,7 @@ def Calculate_TrueFalsth_Ratio(prediction, label):
 
 
 def Trail(batch_size, initailize_percent):
-    ground_truth = Generating_Truth(0.4, .8, 8)
+    ground_truth = Generating_Truth(0.7, 0.1, 8)
     
 
     currdata = Initialize_Data(ground_truth, initailize_percent)
@@ -479,7 +489,7 @@ def Trail(batch_size, initailize_percent):
 
     batch_scores = {}
     batch_ratios = {}
-    while knownnum < 0.95 * total:
+    while knownnum <  total:
         knownnum = CountKnownNum(currdata)
         #batch_size = 40
         size = min(batch_size, total - knownnum)
@@ -555,7 +565,58 @@ def Trail(batch_size, initailize_percent):
     return accuracy, scores, batch_scores
 
 
+def Trail2(batch_size, initailize_percent):
+    ground_truth = Generating_Truth(10, 6, 0)
+    total = len(ground_truth) * len(ground_truth[0])
 
+    currdata = Initialize_Data(ground_truth, initailize_percent)
+    scores = {}
+    known_percent = []
+    knownnum = CountKnownNum(currdata)
+    while knownnum < total:
+        knownnum = CountKnownNum(currdata)
+        #batch_size = 40
+        size = min(batch_size, total - knownnum)
+
+
+        
+        #known_percent.append(knownnum/total)
+
+
+        
+        predictions = Simulate_Once(currdata)
+        count = len(predictions)
+        correct = 0
+        local_prediction = []
+        for prediction in predictions:
+            maxscore = -1
+            maxlabel = ''
+            for label in prediction[2]:
+                if prediction[2][label] > maxscore:
+                    maxlabel = label
+                    maxscore = prediction[2][label]
+
+            #entropy = Calculate_Entropy(prediction)
+            TF_ratio = Calculate_TrueFalsth_Ratio(prediction, maxlabel)
+
+            local_prediction.append((prediction[0], prediction[1], maxlabel, TF_ratio))  #score or entropy
+            
+
+            if ground_truth[prediction[0]][prediction[1]] == maxlabel:
+                correct+=1
+
+        scores[knownnum] = correct/count
+        selections = Make_Selections_entropy(size, local_prediction)
+
+        for selection in selections:
+            row = selection[0]
+            col = selection[1]
+
+            currdata[row][col] = ground_truth[row][col]
+
+        knownnum = CountKnownNum(currdata)
+    
+    return scores
 
 
 
@@ -570,14 +631,14 @@ def main():
         accuracy_random = {}
         num_of_trails = 1
 
-        batch_size = 400
-        initialize_percent = .9
+        batch_size = 1000
+        initialize_percent = .05
 
         batch_scores = {}
 #---------------------------------------------------------------------------------
 #   unify the result
         for k in range(num_of_trails):
-            accuracy_in_one_trail, score_in_one_trail, batch_scores_in_one_trail = Trail(batch_size, initialize_percent)
+            accuracy_in_one_trail, score_in_one_trail, batch_scores_in_one_trail = Trail2(batch_size, initialize_percent)
             for percent in accuracy_in_one_trail:
                 if percent in accuracy_score:
                     accuracy_score[percent] = accuracy_score[percent]+accuracy_in_one_trail[percent]

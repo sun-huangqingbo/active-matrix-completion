@@ -28,8 +28,6 @@ def Generating_Truth(uniqueness, responsiveness, numtypes):
     
     table = []
 
-
-    
     for i in range(40):
         row = []
         rand = np.random.randint(len(labels))
@@ -57,9 +55,8 @@ def Generating_Truth(uniqueness, responsiveness, numtypes):
     table = np.array(table)
     #table = cp.array(table)
     
-
-    pd_data = pd.DataFrame(table)
-    pd_data.to_csv('test_data.csv',index=False,header=False)
+    #pd_data = pd.DataFrame(table)
+    #pd_data.to_csv('test_data.csv',index=False,header=False)
     
     return table
 
