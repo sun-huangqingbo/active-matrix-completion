@@ -20,11 +20,11 @@ def AddNoise(data, percent):
     noise_num = int(len(data) * len(data[0]) * percent)
     i = 0
     while i < noise_num:
-        row = np.random.randint(0, 99)
-        col = np.random.randint(0, 99)
+        row = np.random.randint(0, 100)
+        col = np.random.randint(0, 100)
         while (row, col) in added:
-            row = np.random.randint(0, 99)
-            col = np.random.randint(0, 99)
+            row = np.random.randint(0, 100)
+            col = np.random.randint(0, 100)
         noise_index = np.random.randint(0, 8)
         while data[row][col] == str(noise_index):
             noise_index = np.random.randint(0, 8)
@@ -184,6 +184,7 @@ def Predict_One_Col(col, currdata, step, panelty):
     #index is consistent with currdata
     unknown_rows = []
 
+    cols_in_community = []
 
     for row in range(len(currdata)):
         if currdata[row][col] == 'u':
@@ -194,6 +195,8 @@ def Predict_One_Col(col, currdata, step, panelty):
             break
         predicted = []
         community = Find_Cols_With_n_Conflicts(n_conflicts + step, n_conflicts, currdata, col)
+        for c in community:
+            cols_in_community.append(c)
         if len(community) != 0:
             for urow in unknown_rows:
                 prediction = {}
@@ -222,7 +225,7 @@ def Predict_One_Col(col, currdata, step, panelty):
         for row in predicted:
             unknown_rows.remove(row)
     
-    return predictions
+    return (predictions, cols_in_community)
 
 def Count_Row_Score(row, currdata):
     count = 0
@@ -288,6 +291,10 @@ def Split_Parameters(pl):
 def Simulate_Once(currdata, step, panelty):
     prediction_from_col = []
     prediction_from_row = []
+
+    col_in_community_count = {}
+    row_in_community_count = {}
+
     predictions = {}
     parameters = []
     for col in range(len(currdata[0])):
@@ -302,8 +309,14 @@ def Simulate_Once(currdata, step, panelty):
         #p: row, col, dict
 
     for l in predictions_col:
-        for p in l:
+        for p in l[0]:
             prediction_from_col.append(p)
+        for col_ in l[1]:
+            if col_ in col_in_community_count:
+                col_in_community_count[col_] += 1
+            else:
+                col_in_community_count[col_] = 1
+
     for p in prediction_from_col:
         predictions[(p[0], p[1])] = p[2]
     
@@ -321,8 +334,13 @@ def Simulate_Once(currdata, step, panelty):
     pool.join()
 
     for l in predictions_row:
-        for p in l:
+        for p in l[0]:
             prediction_from_row.append(p)
+        for col_ in l[1]:
+            if col_ in row_in_community_count:
+                row_in_community_count[col_] += 1
+            else:
+                row_in_community_count[col_] = 1
 
     for p in prediction_from_row:
         if (p[1], p[0]) in predictions:
@@ -335,7 +353,7 @@ def Simulate_Once(currdata, step, panelty):
         else:
             predictions[(p[1], p[0])][key] = p[2]
 
-    return predictions
+    return predictions, row_in_community_count, col_in_community_count
 
 
 def Make_Selections_random(num, predictions):
@@ -400,7 +418,6 @@ def Calculate_Resp(currdata, panelty):
     return resps
 
 
-
 def Trail(uniqueness, responsiveness, initial_size):
     ground_truth = Generating_Truth(100, uniqueness, responsiveness, 8)
     currdata = Initialize_Data(ground_truth, initial_size)
@@ -411,7 +428,7 @@ def Trail(uniqueness, responsiveness, initial_size):
         
     
     P = 2.5
-    batch_size = 500
+    batch_size = 1000
     accus = {}
     accusR = {}
 
@@ -419,11 +436,19 @@ def Trail(uniqueness, responsiveness, initial_size):
 #by score
     while knownnum < total:
         #Print_average_col_score(currdata)
-        
-
         step = 1
         panelty = P * (knownnum/total)
-        prediction_temp = Simulate_Once(currdata, step, panelty)
+        prediction_temp, row_in_community_count, col_in_community_count = Simulate_Once(currdata, step, panelty)
+
+        min_row_count = 10000
+        for row_ in  row_in_community_count:
+            if row_in_community_count[row_] < min_row_count:
+                min_row_count = row_in_community_count[row_]
+
+        min_col_count = 10000
+        for col_ in  col_in_community_count:
+            if col_in_community_count[col_] < min_col_count:
+                min_col_count = col_in_community_count[col_]
 
         curr_resp = Calculate_Resp(currdata, panelty)
 
@@ -443,6 +468,15 @@ def Trail(uniqueness, responsiveness, initial_size):
                     maxlabel = label
                     maxscore = dictp[label]
 
+            if row in row_in_community_count:
+                row_count_ratio = min_row_count/row_in_community_count[row]
+            else:
+                row_count = 1
+
+            if col in col_in_community_count:
+                col_count_ratio = min_col_count/col_in_community_count[col]
+            else:
+                col_count = 1
 
             if maxscore < curr_resp[row][1]:
                 maxlabel = curr_resp[row][0]
@@ -452,6 +486,7 @@ def Trail(uniqueness, responsiveness, initial_size):
             else:
                 mistake.append(maxscore)
             #TF_ratio = Calculate_TrueFalsth_Ratio(prediction_temp[key], maxlabel)
+            maxscore = maxscore / min(row_count_ratio, col_count_ratio)
             predictions.append((row, col, maxlabel, maxscore))
         #print('correct mean: ', np.array(corrects).mean())
         #print('mistake mean: ', np.array(mistake).mean())
@@ -485,7 +520,17 @@ def Trail(uniqueness, responsiveness, initial_size):
 
         step = 1
         panelty = P * (knownnum/total)
-        prediction_temp = Simulate_Once(currdata, step, panelty)
+        prediction_temp, row_in_community_count, col_in_community_count = Simulate_Once(currdata, step, panelty)
+
+        min_row_count = 10000
+        for row_ in  row_in_community_count:
+            if row_in_community_count[row_] < min_row_count:
+                min_row_count = row_in_community_count[row_]
+
+        min_col_count = 10000
+        for col_ in  col_in_community_count:
+            if col_in_community_count[col_] < min_col_count:
+                min_col_count = col_in_community_count[col_]
 
         curr_resp = Calculate_Resp(currdata, panelty)
 
@@ -505,6 +550,17 @@ def Trail(uniqueness, responsiveness, initial_size):
                 if dictp[label] > maxscore:
                     maxlabel = label
                     maxscore = dictp[label]
+
+            if row in row_in_community_count:
+                row_count_ratio = min_row_count/row_in_community_count[row]
+            else:
+                row_count = 1
+
+            if col in col_in_community_count:
+                col_count_ratio = min_col_count/col_in_community_count[col]
+            else:
+                col_count = 1
+
             if maxscore < curr_resp[row][1]:
                 maxlabel = curr_resp[row][0]
             #score2 = Calculate_TrueFalsth_Sum(prediction_temp[key], maxlabel)
@@ -514,6 +570,7 @@ def Trail(uniqueness, responsiveness, initial_size):
             else:
                 mistake.append(maxscore)
             #TF_ratio = Calculate_TrueFalsth_Ratio(prediction_temp[key], maxlabel)
+            maxscore = maxscore * row_count_ratio * col_count_ratio
             predictions.append((row, col, maxlabel, maxscore))
         #print('correct mean: ', np.array(corrects).mean())
         #print('mistake mean: ', np.array(mistake).mean())
@@ -799,7 +856,7 @@ def Trail(uniqueness, responsiveness, initial_size):
     
     
     
-    filename = 'uni' + str(uniqueness) + 'res' + str(responsiveness)+ 'step' + str(step)  + 'new6.csv'
+    filename = 'uni' + str(uniqueness) + 'res' + str(responsiveness)+ 'step' + str(step)  + '.csv'
     result = []
     result.append(accus.keys())
     result.append(accus.values())

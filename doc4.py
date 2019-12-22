@@ -68,12 +68,13 @@ def Make_Selections_score(num, predictions):
                     max_score = batch[i][3]
                     index = i
 
-            if prediction[3] < max_score:
+            if prediction[3] <= max_score:
                 batch.remove(batch[index])
                 batch.append(prediction)
 
 
     return batch
+
 
 
 
@@ -179,7 +180,7 @@ def Find_remain_col(row, col, threshold, currdata):
 
 
 def Predict_One_Col(col, currdata, step, panelty):
-    n_coobsv = 0
+    n_conflicts = 0
     predictions = []
     #index is consistent with currdata
     unknown_rows = []
@@ -188,14 +189,12 @@ def Predict_One_Col(col, currdata, step, panelty):
     for row in range(len(currdata)):
         if currdata[row][col] == 'u':
             unknown_rows.append(row)
-        else:
-            n_coobsv += 1
 
     while True:
-        if len(unknown_rows) == 0 or n_coobsv < 0:
+        if len(unknown_rows) == 0 or n_conflicts > len(currdata):
             break
         predicted = []
-        community = Find_Cols_With_n_Coobsv(n_coobsv, n_coobsv - step, currdata, col)
+        community = Find_Cols_With_n_Conflicts(n_conflicts + step, n_conflicts, currdata, col)
         if len(community) != 0:
             for urow in unknown_rows:
                 prediction = {}
@@ -217,14 +216,21 @@ def Predict_One_Col(col, currdata, step, panelty):
                 if len(prediction) != 0:
                     predictions.append((urow, col, prediction))
                     predicted.append(urow)
-            n_coobsv -= step
+            n_conflicts += step
         else:
-            n_coobsv -= step
+            n_conflicts += step
 
         for row in predicted:
             unknown_rows.remove(row)
     
     return predictions
+
+def Count_Row_Score(row, currdata):
+    count = 0
+    for col in range(len(currdata[0])):
+        if currdata[row][col] != 'u':
+            count+=1
+    return count
 
 
 def Count_Col_Score(col, col2, panelty, currdata):
@@ -235,22 +241,6 @@ def Count_Col_Score(col, col2, panelty, currdata):
         if row[col] != 'u' and row[col2] != 'u' and row[col] != row[col2]:
             score -= panelty
     return score
-
-
-def Find_Max_community(col, currdata, threshold):
-    result = []
-    cols = []
-    for i in range(len(currdata[0])):
-        cols.append(i)
-    cols.remove(col)
-    for col2 in cols:
-        score = Count_Col_Score(col, col2, currdata)
-        if score > threshold:
-            result.append(col2)
-
-
-    return result
-
 
 
 def Find_Cols_With_n_Conflicts(upperbound, lowerbound, currdata, col):
@@ -270,23 +260,6 @@ def Find_Cols_With_n_Conflicts(upperbound, lowerbound, currdata, col):
 
     return result
 
-
-def Find_Cols_With_n_Coobsv(upperbound, lowerbound, currdata, col):
-    #row is index of rows in currdata
-    result = []
-    cols = []
-    for i in range(len(currdata[0])):
-        cols.append(i)
-    cols.remove(col)
-    for col2 in cols:
-        coobsv = 0
-        for row in range(len(currdata)):
-            if currdata[row][col] != 'u' and currdata[row][col2] != 'u' and currdata[row][col] == currdata[row][col2]:
-                coobsv += 1
-        if coobsv <  upperbound and coobsv >= lowerbound:
-            result.append(col2)
-
-    return result
 
 
 def Split_Parameters(pl):
@@ -340,7 +313,8 @@ def Simulate_Once(currdata, step, panelty):
         if (p[1], p[0]) in predictions:
             for key in p[2]:
                 if key in predictions[(p[1], p[0])]:
-                    predictions[(p[1], p[0])][key] += p[2][key]
+                    predictions[(p[1], p[0])][key] = max(p[2][key], predictions[(p[1], p[0])][key])
+                    #predictions[(p[1], p[0])][key] /= 2
                 else:
                     predictions[(p[1], p[0])][key] = p[2][key]
         else:
@@ -361,14 +335,18 @@ def Make_Selections_random(num, predictions):
     return batch
 
 
-def Calculate_TrueFalsth_Ratio(prediction, label):
-    ratio = 1
-    true_score = prediction[label]
-    for key in prediction:
-        if key != label:
-            ratio *= ((1 + true_score)/(prediction[key] + 1))
+def Calculate_TrueFalsth_Sum(prediction, label):
+    if len(prediction) == 1:
+        sum_ = prediction[label]
+    else:
+        sum_ = 0
+        true_score = prediction[label]
+        for key in prediction:
+            if key != label:
+                sum_ += true_score - prediction[key]
+        sum_ /= (len(prediction) - 1)
     
-    return ratio
+    return sum_
 
 
 def Print_average_col_score(currdata):
@@ -380,29 +358,112 @@ def Print_average_col_score(currdata):
 
     print("Average score: ", sumc/9900)
 
+def Calculate_Resp(currdata, panelty):
+    resps = []
+    resps2 = []
+    for row in currdata:
+        resp = 0
+        row_label = {}
+        for e in row:
+            if e != 'u' and e not in row_label:
+                row_label[e] = 1
+            elif e != 'u' and e in row_label:
+                row_label[e] += 1
+
+        max_label = ''
+        maxscore = -1000000
+        for key in row_label:
+            if row_label[key] > maxscore:
+                maxscore = row_label[key]
+                max_label = key
+
+        resp = maxscore
+        total = maxscore
+        for key in row_label:
+            if key != max_label:
+                resp -= panelty * row_label[key]
+                total += row_label[key]
+        resps.append((max_label, resp))
+        resps2.append(maxscore/total)
+
+    
+    resps2 = np.array(resps2)
+    resp_average = resps2.mean()
+    return resps, 1 - resp_average
+
+
+def Calculate_Position_Score1(predictions, currdata):
+    row_score = {}
+    col_score = {}
+    for i in range(len(currdata)):
+        count = 0
+        for j in range(len(currdata[i])):
+            if currdata[i][j] != 'u':
+                count+=1
+        row_score[i] = count
+
+    for j in range(len(currdata[0])):
+        count = 0
+        for i in range(len(currdata)):
+            if currdata[i][j] != 'u':
+                count+=1
+        col_score[j] = count
+    '''
+    for p in predictions:
+        row = p[0]
+        col = p[1]
+        row_score[row] += p[3]
+        col_score[col] += p[3]
+    '''
+    row_max = max(row_score.values())
+    row_min = min(row_score.values())
+
+    col_max = max(col_score.values())
+    col_min = min(col_score.values())
+
+    for key in row_score:
+        row_score[key] = (row_score[key] - row_min)/(row_max - row_min + 1)
+
+    for key in col_score:
+        col_score[key] = (col_score[key] - col_min)/(col_max - col_min + 1)
+
+    return row_score, col_score
+
+
+
+
 
 
 
 def Trail(uniqueness, responsiveness, initial_size):
     ground_truth = Generating_Truth(100, uniqueness, responsiveness, 8)
-    currdata = Initialize_Data(ground_truth, initial_size)
+    ground_truth10 = ground_truth
+    #ground_truth10 = AddNoise(ground_truth, 0.1)
+    currdata = Initialize_Data(ground_truth10, initial_size)
     total = len(currdata) * len(currdata[0])
-    batch_size = 100
+
     knownnum = CountKnownNum(currdata)
+        
+        
     
-    step = 2
-    P = 3
-    batch_size = 1000
+    P = 5
+    batch_size = 200
     accus = {}
     accusR = {}
+    accusHybrid = {}
 
 #----------------------------------------------------------------------
-#by score
+#by hybrid
     while knownnum < total:
         #Print_average_col_score(currdata)
+        
 
+        step = 1
         panelty = P * (knownnum/total)
         prediction_temp = Simulate_Once(currdata, step, panelty)
+
+        curr_resp, resp_average = Calculate_Resp(currdata, panelty)
+
         predictions = []
         count = len(prediction_temp)
         correct = 0
@@ -412,22 +473,92 @@ def Trail(uniqueness, responsiveness, initial_size):
             row = key[0]
             col = key[1]
             dictp = prediction_temp[key]
-            maxscore = -100
+            maxscore = -10000
             maxlabel = ''
             for label in dictp:
                 if dictp[label] > maxscore:
                     maxlabel = label
                     maxscore = dictp[label]
+
+
+            if maxscore < curr_resp[row][1]:
+                maxlabel = curr_resp[row][0]
+            if ground_truth[row][col] == maxlabel:
+                    correct+=1
+                    corrects.append(maxscore)
+            else:
+                mistake.append(maxscore)
+
+            uncertain_score = maxscore
+            predictions.append([row, col, maxlabel, uncertain_score])
+
+        knownnum = CountKnownNum(currdata)
+
+        accu = 1 - (count - correct)/total
+        accusHybrid[knownnum] = accu
+
+
+        size = min(batch_size, total - knownnum)
+        if knownnum/total < 0.1 or knownnum/total > (0.35 + 0.2 * (1 - resp_average)):
+            selections = Make_Selections_score(size, predictions)
+        else:
+            selections = Make_Selections_random(size, predictions)
+
+        for selection in selections:
+            row = selection[0]
+            col = selection[1]
+            currdata[row][col] = ground_truth[row][col]
+
+        knownnum = CountKnownNum(currdata)
+
+    
+    #print(accus)
+
+
+#----------------------------------------------------------------------
+#active
+    currdata = Initialize_Data(ground_truth10, 0.02)
+    total = len(currdata) * len(currdata[0])
+    knownnum = CountKnownNum(currdata)
+    while knownnum < total:
+        #Print_average_col_score(currdata)
+
+        step = 1
+        panelty = P * (knownnum/total)
+        prediction_temp = Simulate_Once(currdata, step, panelty)
+
+        curr_resp, resp_average = Calculate_Resp(currdata, panelty)
+
+
+        predictions = []
+        count = len(prediction_temp)
+        correct = 0
+        mistake = []
+        corrects = []
+        for key in prediction_temp:
+            row = key[0]
+            col = key[1]
+            dictp = prediction_temp[key]
+            maxscore = -10000
+            maxlabel = ''
+            for label in dictp:
+                if dictp[label] > maxscore:
+                    maxlabel = label
+                    maxscore = dictp[label]
+            if maxscore < curr_resp[row][1]:
+                maxlabel = curr_resp[row][0]
+            #score2 = Calculate_TrueFalsth_Sum(prediction_temp[key], maxlabel)
             if ground_truth[row][col] == maxlabel:
                     correct+=1
                     corrects.append(maxscore)
             else:
                 mistake.append(maxscore)
             #TF_ratio = Calculate_TrueFalsth_Ratio(prediction_temp[key], maxlabel)
-            predictions.append((row, col, maxlabel, maxscore))
-        #print('correct mean: ', np.array(corrects).mean())
-        #print('mistake mean: ', np.array(mistake).mean())
-        #print()
+            uncertain_score = maxscore
+            #postion_score = Calculate_Position_Score2(row, col, currdata)
+            predictions.append([row, col, maxlabel, uncertain_score])
+
+        
         knownnum = CountKnownNum(currdata)
 
         accu = 1 - (count - correct)/total
@@ -443,20 +574,21 @@ def Trail(uniqueness, responsiveness, initial_size):
 
         knownnum = CountKnownNum(currdata)
 
-    
-    #print(accus)
 
-#----------------------------------------------------------------------
-#Random
-    
-    currdata = Initialize_Data(ground_truth, 0.02)
+#----------------------------------------------------------------------------------------------------------------------
+    currdata = Initialize_Data(ground_truth10, 0.02)
     total = len(currdata) * len(currdata[0])
     knownnum = CountKnownNum(currdata)
     while knownnum < total:
         #Print_average_col_score(currdata)
 
+        step = 1
         panelty = P * (knownnum/total)
         prediction_temp = Simulate_Once(currdata, step, panelty)
+
+        curr_resp, resp_average = Calculate_Resp(currdata, panelty)
+
+
         predictions = []
         count = len(prediction_temp)
         correct = 0
@@ -466,22 +598,26 @@ def Trail(uniqueness, responsiveness, initial_size):
             row = key[0]
             col = key[1]
             dictp = prediction_temp[key]
-            maxscore = -100
+            maxscore = -10000
             maxlabel = ''
             for label in dictp:
                 if dictp[label] > maxscore:
                     maxlabel = label
                     maxscore = dictp[label]
+            if maxscore < curr_resp[row][1]:
+                maxlabel = curr_resp[row][0]
+            #score2 = Calculate_TrueFalsth_Sum(prediction_temp[key], maxlabel)
             if ground_truth[row][col] == maxlabel:
                     correct+=1
                     corrects.append(maxscore)
             else:
                 mistake.append(maxscore)
             #TF_ratio = Calculate_TrueFalsth_Ratio(prediction_temp[key], maxlabel)
-            predictions.append((row, col, maxlabel, maxscore))
-        #print('correct mean: ', np.array(corrects).mean())
-        #print('mistake mean: ', np.array(mistake).mean())
-        #print()
+            uncertain_score = maxscore
+            #postion_score = Calculate_Position_Score2(row, col, currdata)
+            predictions.append([row, col, maxlabel, uncertain_score])
+
+        
         knownnum = CountKnownNum(currdata)
 
         accu = 1 - (count - correct)/total
@@ -497,8 +633,7 @@ def Trail(uniqueness, responsiveness, initial_size):
 
         knownnum = CountKnownNum(currdata)
 
-
-
+    '''
 #-------------------------------------------------------------------------------------------------------------------------
 #Noise 10%
 
@@ -517,6 +652,8 @@ def Trail(uniqueness, responsiveness, initial_size):
         
         panelty = P * (knownnum/total)
         prediction_temp = Simulate_Once(currdata, step, panelty)
+        curr_resp = Calculate_Resp(currdata, panelty)
+
         predictions = []
         count = len(prediction_temp)
         correct = 0
@@ -532,6 +669,9 @@ def Trail(uniqueness, responsiveness, initial_size):
                 if dictp[label] > maxscore:
                     maxlabel = label
                     maxscore = dictp[label]
+
+            if maxscore < curr_resp[row][1]:
+                maxlabel = curr_resp[row][0]
             if ground_truth[row][col] == maxlabel:
                     correct+=1
                     corrects.append(maxscore)
@@ -568,9 +708,11 @@ def Trail(uniqueness, responsiveness, initial_size):
     knownnum = CountKnownNum(currdata)
     while knownnum < total:
         #Print_average_col_score(currdata)
-        
+
         panelty = P * (knownnum/total)
         prediction_temp = Simulate_Once(currdata, step, panelty)
+        curr_resp = Calculate_Resp(currdata, panelty)
+
         predictions = []
         count = len(prediction_temp)
         correct = 0
@@ -586,6 +728,9 @@ def Trail(uniqueness, responsiveness, initial_size):
                 if dictp[label] > maxscore:
                     maxlabel = label
                     maxscore = dictp[label]
+
+            if maxscore < curr_resp[row][1]:
+                maxlabel = curr_resp[row][0]
             if ground_truth[row][col] == maxlabel:
                     correct+=1
                     corrects.append(maxscore)
@@ -629,6 +774,8 @@ def Trail(uniqueness, responsiveness, initial_size):
         
         panelty = P * (knownnum/total)
         prediction_temp = Simulate_Once(currdata, step, panelty)
+        curr_resp = Calculate_Resp(currdata, panelty)
+
         predictions = []
         count = len(prediction_temp)
         correct = 0
@@ -644,6 +791,9 @@ def Trail(uniqueness, responsiveness, initial_size):
                 if dictp[label] > maxscore:
                     maxlabel = label
                     maxscore = dictp[label]
+
+            if maxscore < curr_resp[row][1]:
+                maxlabel = curr_resp[row][0]
             if ground_truth[row][col] == maxlabel:
                     correct+=1
                     corrects.append(maxscore)
@@ -680,10 +830,11 @@ def Trail(uniqueness, responsiveness, initial_size):
     knownnum = CountKnownNum(currdata)
     while knownnum < total:
         #Print_average_col_score(currdata)
-        
 
         panelty = P * (knownnum/total)
         prediction_temp = Simulate_Once(currdata, step, panelty)
+        curr_resp = Calculate_Resp(currdata, panelty)
+
         predictions = []
         count = len(prediction_temp)
         correct = 0
@@ -699,6 +850,9 @@ def Trail(uniqueness, responsiveness, initial_size):
                 if dictp[label] > maxscore:
                     maxlabel = label
                     maxscore = dictp[label]
+            if maxscore < curr_resp[row][1]:
+                maxlabel = curr_resp[row][0]
+
             if ground_truth[row][col] == maxlabel:
                     correct+=1
                     corrects.append(maxscore)
@@ -723,40 +877,46 @@ def Trail(uniqueness, responsiveness, initial_size):
             currdata[row][col] = ground_truth[row][col]
 
         knownnum = CountKnownNum(currdata)
-
+    '''
     print('uniquesness: ', uniqueness, 'responsiveness: ', responsiveness)
     print('Active learning: ', accus)
     print('Random: ', accusR)
     print(' ')
     print(' ')
-    
+
+    plt.plot(accusHybrid.keys(), accusHybrid.values(), 'o-', label='hybrid learning')
     plt.plot(accus.keys(), accus.values(), 'o-', label='active learning')
-    plt.plot(accusR.keys(), accusR.values(), 'o-', label = 'random')
+    plt.plot(accusR.keys(), accusR.values(), 'o-', label = 'random learning')
+    '''
     plt.plot(accus_noise10.keys(), accus_noise10.values(), '^-', label='active learning, noise: 10%')
     plt.plot(accusR_noise10.keys(), accusR_noise10.values(), '^-', label = 'random, noise: 10%')
     plt.plot(accus_noise20.keys(), accus_noise20.values(), 'v-', label='active learning, noise: 20%')
     plt.plot(accusR_noise20.keys(), accusR_noise20.values(), 'v-', label = 'random, noise: 20%')
+    '''
     plt.legend(loc='best')
     plt.show()
     
     
     
-    filename = 'uni' + str(uniqueness) + 'res' + str(responsiveness) +'.csv'
+    filename = 'uni' + str(uniqueness) + 'res' + str(responsiveness)+ 'step' + str(step)  + 'hybrid.csv'
     result = []
     result.append(accus.keys())
+    result.append(accusHybrid.values())
     result.append(accus.values())
     result.append(accusR.values())
+    '''
     result.append(accus_noise10.values())
     result.append(accusR_noise10.values())
     result.append(accus_noise20.values())
     result.append(accusR_noise20.values())
+    '''
     pd_data = pd.DataFrame(result)
     pd_data.to_csv(filename,index=False,header=False)
 
     
 def main():
-    for u in [0.7]:
-        for r in [0.1]:
+    for u in [0.9]:
+        for r in [0.9]:
             Trail(u, r, 0.02)
 
 
