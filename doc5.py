@@ -52,7 +52,7 @@ def CountKnownNum(currdata):
     count = 0
     for row in currdata:
         for e in row:
-            if e != 'u':
+            if e != 'uu':
                 count+=1
     return count
 
@@ -136,6 +136,7 @@ def Generating_Truth(num, uniqueness, responsiveness, numtypes):
 
     pd_data = pd.DataFrame(table)
     pd_data.to_csv('test_data.csv',index=False,header=False)
+
     
     return table
 
@@ -145,21 +146,22 @@ def Initialize_Data(ground_truth, observed_percent):
     currdata = []
 
     for i in range(0, len(ground_truth) * len(ground_truth[0])):
-        currdata.append('u')
+        currdata.append('uu')
 
     currdata = np.array(currdata).reshape(len(ground_truth), len(ground_truth[0])) 
 
     for i in range(len(ground_truth)):
-        currdata[i][i] = ground_truth[i][i]
+        label = ground_truth[i][i]
+        currdata[i][i] = label
 
     for i in range(observednum):
         rand1 = np.random.randint(len(ground_truth))
         rand2 = np.random.randint(len(ground_truth[0]))
-        while currdata[rand1][rand2] != 'u':
+        while currdata[rand1][rand2] != 'uu':
             rand1 = np.random.randint(len(ground_truth))
             rand2 = np.random.randint(len(ground_truth[0]))
         currdata[rand1][rand2] = ground_truth[rand1][rand2]
-        
+    print(currdata[0][0] == ground_truth[0][0])
     return currdata
 
 
@@ -172,7 +174,7 @@ def Find_remain_col(row, col, threshold, currdata):
         cols.append(i)
     cols.remove(col)
     for col2 in cols:
-        if currdata[row][col2] != 'u':
+        if currdata[row][col2] != 'uu':
             score = Count_Col_Score(col, col2, currdata)
             result[col2] = score
 
@@ -209,7 +211,7 @@ def Predict_One_Col(col, currdata, step, panelty):
 
 
     for row in range(len(currdata)):
-        if currdata[row][col] == 'u':
+        if currdata[row][col] == 'uu':
             unknown_rows.append(row)
 
     while True:
@@ -222,7 +224,7 @@ def Predict_One_Col(col, currdata, step, panelty):
                 prediction = {}
                 count = {}
                 for col2 in community:
-                    if currdata[urow][col2] != 'u':
+                    if currdata[urow][col2] != 'uu':
                         label = currdata[urow][col2]
                         if label in prediction:
                             prediction[label] += Count_Col_Score(col, col2, panelty, currdata)
@@ -239,18 +241,19 @@ def Predict_One_Col(col, currdata, step, panelty):
                     predictions.append((urow, col, prediction))
                     predicted.append(urow)
             n_conflicts += step
+            for row in predicted:
+                unknown_rows.remove(row)
+    
         else:
             n_conflicts += step
 
-        for row in predicted:
-            unknown_rows.remove(row)
-    
+        
     return predictions
 
 def Count_Row_Score(row, currdata):
     count = 0
     for col in range(len(currdata[0])):
-        if currdata[row][col] != 'u':
+        if currdata[row][col] != 'uu':
             count+=1
     return count
 
@@ -258,9 +261,9 @@ def Count_Row_Score(row, currdata):
 def Count_Col_Score(col, col2, panelty, currdata):
     score = 0
     for row in currdata:
-        if row[col] != 'u' and row[col2] != 'u' and row[col] == row[col2]:
+        if row[col] != 'uu' and row[col2] != 'uu' and row[col] == row[col2]:
             score += 1
-        if row[col] != 'u' and row[col2] != 'u' and row[col] != row[col2]:
+        if row[col] != 'uu' and row[col2] != 'uu' and row[col] != row[col2]:
             score -= panelty
     return score
 
@@ -275,7 +278,7 @@ def Find_Cols_With_n_Conflicts(upperbound, lowerbound, currdata, col):
     for col2 in cols:
         conflict = 0
         for row in range(len(currdata)):
-            if currdata[row][col] != 'u' and currdata[row][col2] != 'u' and currdata[row][col] != currdata[row][col2]:
+            if currdata[row][col] != 'uu' and currdata[row][col2] != 'uu' and currdata[row][col] != currdata[row][col2]:
                 conflict += 1
         if conflict <  upperbound and conflict >= lowerbound:
             result.append(col2)
@@ -370,9 +373,9 @@ def Calculate_Resp(currdata, panelty):
         resp = 0
         row_label = {}
         for e in row:
-            if e != 'u' and e not in row_label:
+            if e != 'uu' and e not in row_label:
                 row_label[e] = 1
-            elif e != 'u' and e in row_label:
+            elif e != 'uu' and e in row_label:
                 row_label[e] += 1
 
         max_label = ''
@@ -406,9 +409,9 @@ def Calculate_entropy(prediction):
 
 
 def Trail(uniqueness, responsiveness, initial_size):
-    ground_truth = Generating_Truth(100, uniqueness, responsiveness, 8)
-    ground_truth10 = ground_truth
-    #ground_truth10 = AddNoise(ground_truth, 0.1)
+    ground_truth_ = Generating_Truth(100, uniqueness, responsiveness, 8)
+    ground_truth10 = ground_truth_
+    #ground_truth10 = AddNoise(ground_truth_, 0.1)
     currdata = Initialize_Data(ground_truth10, initial_size)
     total = len(currdata) * len(currdata[0])
 
@@ -422,9 +425,10 @@ def Trail(uniqueness, responsiveness, initial_size):
     accusR = {}
     accusHybrid = {}
     accusEntropy = {}
-    
+    '''
 #----------------------------------------------------------------------
 #by hybrid
+    
     while knownnum < total:
         #Print_average_col_score(currdata)
         
@@ -474,10 +478,7 @@ def Trail(uniqueness, responsiveness, initial_size):
 
 
         size = min(batch_size, total - knownnum)
-        if knownnum/total < 0.06 or knownnum/total > 0.35:
-            selections = Make_Selections_score2(size, predictions)
-        else:
-            selections = Make_Selections_random(size, predictions)
+        selections = Make_Selections_score2(size, predictions)
 
         for selection in selections:
             row = selection[0]
@@ -489,7 +490,7 @@ def Trail(uniqueness, responsiveness, initial_size):
     
     #print(accus)
 
-
+    '''
 #----------------------------------------------------------------------
 #random
     currdata = Initialize_Data(ground_truth10, 0.02)
@@ -551,7 +552,7 @@ def Trail(uniqueness, responsiveness, initial_size):
 
         knownnum = CountKnownNum(currdata)
 
-
+    '''
 #----------------------------------------------------------------------------------------------------------------------
 #Entropy
     currdata = Initialize_Data(ground_truth10, 0.02)
@@ -604,6 +605,7 @@ def Trail(uniqueness, responsiveness, initial_size):
             #postion_score = Calculate_Position_Score2(row, col, currdata)
             predictions.append([row, col, maxlabel, uncertain_score])
 
+
         knownnum = CountKnownNum(currdata)
 
         accu = 1 - (count - correct)/total
@@ -618,7 +620,7 @@ def Trail(uniqueness, responsiveness, initial_size):
             currdata[row][col] = ground_truth10[row][col]
 
         knownnum = CountKnownNum(currdata)
-
+    '''
     
 #-------------------------------------------------------------------------------------------------------------------------
 #score
@@ -661,7 +663,14 @@ def Trail(uniqueness, responsiveness, initial_size):
             else:
                 mistake.append(maxscore)
             #TF_ratio = Calculate_TrueFalsth_Ratio(prediction_temp[key], maxlabel)
-            predictions.append((row, col, maxlabel, maxscore))
+            bias = 1 - min(dictp.values())
+            for key in dictp:
+                dictp[key] += bias
+            k = 1 / sum(dictp.values())
+            for key in dictp:
+                dictp[key] *= k
+            uncertain_score = Calculate_entropy(dictp)
+            predictions.append([row, col, maxlabel, maxscore, uncertain_score])
         #print('correct mean: ', np.array(corrects).mean())
         #print('mistake mean: ', np.array(mistake).mean())
         #print()
@@ -671,38 +680,50 @@ def Trail(uniqueness, responsiveness, initial_size):
         accus[knownnum] = accu
 
         size = min(batch_size, total - knownnum)
-        selections = Make_Selections_score2(size, predictions)
+
+        selections = Make_Selections_score2(size*0.5, predictions)
+        for p in selections:
+            predictions.remove(p)
+        for p in predictions:
+            p[3] = p[4]
+
+        selections2 = Make_Selections_score(size*0.5, predictions)
 
         for selection in selections:
             row = selection[0]
             col = selection[1]
             currdata[row][col] = ground_truth10[row][col]
 
+        
+        for selection in selections2:
+            row = selection[0]
+            col = selection[1]
+            currdata[row][col] = ground_truth10[row][col]
         knownnum = CountKnownNum(currdata)
-
+    
     print('uniquesness: ', uniqueness, 'responsiveness: ', responsiveness)
     #print(accus.values())
     print(' ')
     print(' ')
-    '''
-    plt.plot(accusHybrid.keys(), accusHybrid.values(), 'o-', label='hybrid learning(uncertainty score)')
-    plt.plot(accus.keys(), accus.values(), 'o-', label='active learning(uncertainty score)')
-    plt.plot(accusEntropy.keys(), accusEntropy.values(), 'o-', label='active learning(entropy)')
+    
+    #plt.plot(accusHybrid.keys(), accusHybrid.values(), 'o-', label='active learning(uncertainty score)')
+    plt.plot(accus.keys(), accus.values(), 'o-', label='hybrid active learning(uncertainty score + entropy)')
+    #plt.plot(accusEntropy.keys(), accusEntropy.values(), 'o-', label='active learning(entropy)')
     plt.plot(accusR.keys(), accusR.values(), 'o-', label = 'random learning')
     
     
     plt.legend(loc='best')
     plt.show()
-    '''
     
     
     
-    filename = 'uni' + str(uniqueness) + 'res' + str(responsiveness)+ 'step' + str(step)  + 'hybrid06.csv'
+    
+    filename = 'uni' + str(uniqueness) + 'res' + str(responsiveness)+ 'new test'  + '8ptps.csv'
     result = []
     result.append(accus.keys())
-    result.append(accusHybrid.values())
+    #result.append(accusHybrid.values())
     result.append(accus.values())
-    result.append(accusEntropy.values())
+    #result.append(accusEntropy.values())
     result.append(accusR.values())
     
  
@@ -713,8 +734,7 @@ def Trail(uniqueness, responsiveness, initial_size):
     
 def main():
     for u in [0.4]:
-        for r in [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]:
-        #for r in [0.8]:
+        for r in [0.8]:
             Trail(u, r, 0.02)
 
 
