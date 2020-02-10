@@ -59,20 +59,15 @@ def CountKnownNum(currdata):
 
 def Make_Selections_Higher_Score(num, predictions, batch):#Entropy
     random.shuffle(predictions)
-    '''
-    predictions = np.array(predictions)
+    #predictions = np.array(predictions)
     idex = np.lexsort([-1*predictions[:,4]])
     sorted_predictions = predictions[idex, :]
-    '''
-    predictions.sort(reverse=True, key=lambda x: x[4])
 
     batch_len = 0
     i = 0
     while batch_len < num:
-        random.shuffle(predictions)
-        predictions.sort(reverse=True, key=lambda x: x[4])
-        row = int(predictions[i][0])
-        col = int(predictions[i][1])
+        row = int(sorted_predictions[i][0])
+        col = int(sorted_predictions[i][1])
         if (row, col) not in batch:
             batch.append((row, col))
             batch_len += 1
@@ -82,23 +77,18 @@ def Make_Selections_Higher_Score(num, predictions, batch):#Entropy
 def Make_Selections_Lower_Score(num, predictions, batch):
     random.shuffle(predictions)
     #predictions = np.array(predictions)
-    '''
     idex = np.lexsort([predictions[:,3]])
     sorted_predictions = predictions[idex, :]
-    '''
-    predictions.sort(reverse=False, key=lambda x: x[3])
+
     batch_len = 0
     i = 0
     while batch_len < num:
-        random.shuffle(predictions)
-        predictions.sort(reverse=False, key=lambda x: x[3])
-        row = int(predictions[i][0])
-        col = int(predictions[i][1])
+        row = int(sorted_predictions[i][0])
+        col = int(sorted_predictions[i][1])
         if (row, col) not in batch:
             batch.append((row, col))
             batch_len += 1
         i+=1
-
 
 
 
@@ -412,6 +402,33 @@ def Calculate_entropy(prediction):
 
     return entropy
 
+def Process_Predictions(prediction_temp):
+    predictions = []
+    count = len(prediction_temp)
+    correct = 0
+    mistake = []
+    corrects = []
+    for key in prediction_temp:
+        row = key[0]
+        col = key[1]
+        dictp = prediction_temp[key]
+        maxscore = -10000
+        maxlabel = ''
+        for label in dictp:
+            if dictp[label] > maxscore:
+                maxlabel = label
+                maxscore = dictp[label]
+        #TF_ratio = Calculate_TrueFalsth_Ratio(prediction_temp[key], maxlabel)
+        bias = 1 - min(dictp.values())
+        for key in dictp:
+            dictp[key] += bias
+        k = 1 / sum(dictp.values())
+        for key in dictp:
+            dictp[key] *= k
+        uncertain_score = Calculate_entropy(dictp)
+        predictions.append([row, col, maxlabel, maxscore, uncertain_score])
+    return predictions
+
 
 def Trail_ActiveLearning(uniqueness, responsiveness, initial_size):
     #ground_truth_ = Generating_Truth(100, uniqueness, responsiveness, 150)
@@ -427,12 +444,11 @@ def Trail_ActiveLearning(uniqueness, responsiveness, initial_size):
         row = sample[1]-1
         col = sample[0]-1
         if row == col or (46 - row) == col:
-        #measured_samples_.append((row, col))
             measured_initial.append(sample)
     measured_samples = np.array(measured_initial)
 
-    clustering = AgglomerativeClustering(distance_threshold=10, n_clusters=None).fit(measured_samples[:, 4:])
-    #clustering = AgglomerativeClustering(n_clusters=60).fit(measured_samples[:, 4:])
+    #clustering = AgglomerativeClustering(distance_threshold=5, n_clusters=None).fit(measured_samples[:, 4:])
+    clustering = AgglomerativeClustering(n_clusters=60).fit(measured_samples[:, 4:])
     measured_y = clustering.labels_
 
 
@@ -445,11 +461,7 @@ def Trail_ActiveLearning(uniqueness, responsiveness, initial_size):
     knownnum = CountKnownNum(currdata)
     for i in range(len(currdata)):
         for j in range(len(currdata[0])):
-            if  i == j or (93 - i) == j:
-                '''
-                row = (i/2 if i % 2 == 0 else (i - 1)/2)
-                col = (j/2 if j % 2 == 0 else (j - 1)/2)
-                '''
+            if i == j or (93 - i) == j:
                 row = (i - 47 if i > 46 else i)
                 col = (j - 46 if j > 45 else j)
                 currdata[i][j] = ground_truth10[i][j]
@@ -463,16 +475,16 @@ def Trail_ActiveLearning(uniqueness, responsiveness, initial_size):
     batch_size = int(0.01*total)
     accus = {}
     accusR = {}
-
-    vectors = []
+    accusHybrid = {}
+    accusEntropy = {}
     new_added_num = []
-
+    vectors = []
+    
 #-------------------------------------------------------------------------------------------------------------------------
 #score
     #currdata = Cons(ground_truth10, 0.02)
-    knownnum = CountKnownNum(currdata)
     total = len(currdata) * len(currdata[0])
-    zeros = total - knownnum
+    knownnum = CountKnownNum(currdata)
     once = 0
     twice = 0
     thriple = 0
@@ -488,90 +500,84 @@ def Trail_ActiveLearning(uniqueness, responsiveness, initial_size):
             quartic += 1
     zeros = total/4 - once - twice - thriple - quartic
     vectors.append((zeros*4/total, once*4/total, twice*4/total, thriple*4/total, quartic*4/total))
-    
     while knownnum < total:
-        #Print_average_col_score(currdata)
+
         step = 1
-        panelty = P * (knownnum/total) + 1
-        prediction_temp = Simulate_Once(currdata, step, panelty)
+        panelty = P * (knownnum/total)
+        prediction_temp_col = Simulate_Once(currdata, step, panelty)
+        currdataT = currdata.T
+        prediction_temp_row = Simulate_Once(currdataT, step, panelty)
+
         curr_resp, resp_average = Calculate_Resp(currdata, panelty)
 
-        predictions = []
-        count = len(prediction_temp)
-        correct = 0
-        mistake = []
-        corrects = []
-        for key in prediction_temp:
-            row = key[0]
-            col = key[1]
-            dictp = prediction_temp[key]
-            maxscore = -10000
-            maxlabel = ''
-            for label in dictp:
-                if dictp[label] > maxscore:
-                    maxlabel = label
-                    maxscore = dictp[label]
-            
-            if maxscore < curr_resp[row][1]:
-                maxlabel = curr_resp[row][0]
-            
-            if ground_truth10[row][col] == maxlabel:
-                    correct+=1
-                    corrects.append(maxscore)
-            else:
-                mistake.append(maxscore)
-            #TF_ratio = Calculate_TrueFalsth_Ratio(prediction_temp[key], maxlabel)
-            bias = 1 - min(dictp.values())
-            for key in dictp:
-                dictp[key] += bias
-            k = 1 / sum(dictp.values())
-            for key in dictp:
-                dictp[key] *= k
-            uncertain_score = Calculate_entropy(dictp)
-            predictions.append([row, col, maxlabel, maxscore, uncertain_score])
-        #print('correct mean: ', np.array(corrects).mean())
-        #print('mistake mean: ', np.array(mistake).mean())
-        
-        accu = 1 - (count - correct)/total
-        #accu = correct/count
-        accus[knownnum] = accu
-        
+        prediction_col = np.array(Process_Predictions(prediction_temp_col))
+        prediction_row = np.array(Process_Predictions(prediction_temp_row))
+        prediction_row = prediction_row[:, [1, 0, 2, 3, 4]]
+
+        batch = []
+
 
         size = min(batch_size, total - knownnum)
-        #predictions = np.array(predictions)
-        batch = []
-        Make_Selections_Lower_Score(size, predictions, batch)
+
+        prediction = {}
+        for p in prediction_col:
+            prediction[(p[0], p[1])] = [p[2], p[3]]
+        for p in prediction_row:
+            if p[3] > prediction[(p[0], p[1])][1]:
+                prediction[(p[0], p[1])] = [p[2], p[3]]
+        
+        correct = 0
+        for key in prediction:
+            row = int(key[0])
+            col = int(key[1])
+            
+            if prediction[key][1] < curr_resp[row][1]:
+                prediction[key][0] = curr_resp[row][0]
+            
+            if prediction[key][0] == ground_truth10[row][col]:
+                correct += 1
+                
+        accu = correct/len(prediction)
+        #accu = correct/count
+        accus[knownnum] = accu
+        '''
+        if Generate_binary_result(0.5):
+            Make_Selections_Lower_Score(size*0.5, prediction_col, batch)
+        else:
+            Make_Selections_Higher_Score(size*0.5, prediction_col, batch)
+        
+        if Generate_binary_result(0.5):
+            Make_Selections_Lower_Score(size*0.5, prediction_row, batch)
+        else:
+            Make_Selections_Higher_Score(size*0.5, prediction_row, batch)
+        '''
+        Make_Selections_Lower_Score(size*0.5, prediction_col, batch)
+        Make_Selections_Lower_Score(size*0.5, prediction_row, batch)
+
         new_added = []
         for i in range(len(batch)):
             currdata[batch[i][0]][batch[i][1]] = ground_truth10[batch[i][0]][batch[i][1]]
-            
             if batch[i][0] > 46:
                 row = batch[i][0] - 47
             else: row = batch[i][0]
             if batch[i][1] > 45:
                 col = batch[i][1] - 46
             else: col = batch[i][1]
-            '''
-            row = (batch[i][0]/2 if batch[i][0] % 2 == 0 else (batch[i][0] - 1)/2 )
-            col = (batch[i][1]/2 if batch[i][1] % 2 == 0 else (batch[i][1] - 1)/2 )
-            '''
-            batch[i] = (row, col)
             if (row, col) in measured_samples_:
                 measured_samples_[(row, col)] += 1
             else: 
                 measured_samples_[(row, col)] = 1
                 new_added.append((row, col))
-        new_added_num.append(len(new_added))
         for sample in data:
             row = sample[1]-1
             col = sample[0]-1
             if (row, col) in new_added:
                 measured_samples = np.vstack((measured_samples, sample))
         knownnum = CountKnownNum(currdata)
+        
         once = 0
         twice = 0
         thriple = 0
-        quartic = 0
         for key in measured_samples_:
             if measured_samples_[key] == 1:
                 once += 1
@@ -582,13 +588,11 @@ def Trail_ActiveLearning(uniqueness, responsiveness, initial_size):
             elif measured_samples_[key] == 4:
                 quartic += 1
         zeros = total/4 - once - twice - thriple - quartic
-        vector = (zeros*4/total, once*4/total, twice*4/total, thriple*4/total, quartic*4/total)
-        vectors.append(vector)
-        #accu = 0.42 * vector[0] + 1 * vector[1] - 0.57 * vector[2] + 6.4 * vector[3] - 21 * vector[4]
-        #accus[knownnum] = accu
+        vectors.append((zeros*4/total, once*4/total, twice*4/total, thriple*4/total, quartic*4/total))
         #measured_samples = np.array(measured_samples_)
-        clustering = AgglomerativeClustering(distance_threshold=10, n_clusters=None).fit(measured_samples[:, 4:])
-        #clustering = AgglomerativeClustering(n_clusters=60).fit(measured_samples[:, 4:])
+        #clustering = AgglomerativeClustering(distance_threshold=5, n_clusters=None).fit(measured_samples[:, 4:])
+        new_added_num.append(len(new_added)/size)
+        clustering = AgglomerativeClustering(n_clusters=60).fit(measured_samples[:, 4:])
 
         clusters_num.append(clustering.n_clusters_)
         measured_y = clustering.labels_
@@ -603,6 +607,7 @@ def Trail_ActiveLearning(uniqueness, responsiveness, initial_size):
         #pd_data = pd.DataFrame(ground_truth10)
         #pd_data.to_csv('groundtruth.csv',index=False,header=False)
         currdata = Update_currdata(currdata, ground_truth10)
+        knownnum = CountKnownNum(currdata)
 
 
         '''
@@ -617,7 +622,6 @@ def Trail_ActiveLearning(uniqueness, responsiveness, initial_size):
             col = selection[1]
             currdata[row][col] = ground_truth10[row][col]
         knownnum = CountKnownNum(currdata)
-        '''
         '''
 #-----------------------------------------------------------------------------------------------------
 #-----------------------------------------------------------------------------------------------------
@@ -660,7 +664,7 @@ def Trail_ActiveLearning(uniqueness, responsiveness, initial_size):
         
 
         step = 1
-        panelty = P * (knownnum/total) + 1
+        panelty = P * (knownnum/total)
         prediction_temp = Simulate_Once(currdata, step, panelty)
 
         curr_resp, resp_average = Calculate_Resp(currdata, panelty)
@@ -709,38 +713,46 @@ def Trail_ActiveLearning(uniqueness, responsiveness, initial_size):
         accusR[knownnum] = accu
 
         size = min(batch_size, total - knownnum)
-        predictions = np.array(predictions)
+
         if Generate_binary_result(0.5):
-            selections = Make_Selections_Lower_Score(size, predictions)
-            for p in predictions:
-                predictions = predictions.delete(p)
-            selections2 = Make_Selections_Higher_Score(0, predictions)
-        else:
-            selections = Make_Selections_Lower_Score(0, predictions)
+            selections = Make_Selections_score2(size, predictions)
             for p in selections:
-                predictions = predictions.delete(p)
-            selections2 = Make_Selections_Higher_Score(size, predictions)
+                predictions.remove(p)
+            for p in predictions:
+                p[3] = p[4]
+
+            selections2 = Make_Selections_score(0, predictions)
+        else:
+            selections = Make_Selections_score2(0, predictions)
+            for p in selections:
+                predictions.remove(p)
+            for p in predictions:
+                p[3] = p[4]
+
+            selections2 = Make_Selections_score(size, predictions)
 
         new_added = []
         for i in range(len(selections)):
-            currdata[int(selections[i][0])][int(selections[i][1])] = ground_truth10[int(selections[i][0])][int(selections[i][1])]
+            currdata[selections[i][0]][selections[i][1]] = ground_truth10[selections[i][0]][selections[i][1]]
             if selections[i][0] > 46:
-                row = int(selections[i][0]) - 47
-            else : row = int(selections[i][0])
+                row = selections[i][0] - 47
+            else : row = selections[i][0]
             if selections[i][1] > 45:
-                col = int(selections[i][1]) - 46
-            else: col = int(selections[i][1])
+                col = selections[i][1] - 46
+            else: col = selections[i][1]
+            selections[i] = (row, col)
             if (row, col) not in measured_samples_:
                 new_added.append((row, col))
                 measured_samples_.append((row, col))
         for i in range(len(selections2)):
-            currdata[int(selections[i][0])][int(selections[i][1])] = ground_truth10[int(selections[i][0])][int(selections[i][1])]
+            currdata[selections2[i][0]][selections2[i][1]] = ground_truth10[selections2[i][0]][selections2[i][1]]
             if selections2[i][0] > 46:
-                row = int(selections2[i][0]) - 47
-            else : row = int(selections2[i][0])
+                row = selections2[i][0] - 47
+            else : row = selections2[i][0]
             if selections2[i][1] > 45:
-                col = int(selections2[i][1]) - 46
-            else: col = int(selections2[i][1])
+                col = selections2[i][1] - 46
+            else: col = selections2[i][1]
+            selections2[i] = (row, col)
             if (row, col) not in measured_samples_:
                 new_added.append((row, col))
                 measured_samples_.append((row, col))
@@ -750,6 +762,19 @@ def Trail_ActiveLearning(uniqueness, responsiveness, initial_size):
             col = sample[0]-1
             if (row, col) in new_added:
                 measured_samples = np.vstack((measured_samples, sample))
+        knownnum = CountKnownNum(currdata)
+        zeros = total - knownnum
+        once = 0
+        twice = 0
+        thriple = 0
+        for key in measured_samples_:
+            if measured_samples_[key] == 1:
+                once += 1
+            elif measured_samples_[key] == 2:
+                twice += 1
+            elif measured_samples_[key] == 3:
+                thriple += 1
+        vectors.append((zeros/total, once/total, twice/total, thriple/total))
         #measured_samples = np.array(measured_samples_)
         #clustering = AgglomerativeClustering(distance_threshold=5, n_clusters=None).fit(measured_samples[:, 4:])
         clustering = AgglomerativeClustering(n_clusters=60).fit(measured_samples[:, 4:])
@@ -767,9 +792,6 @@ def Trail_ActiveLearning(uniqueness, responsiveness, initial_size):
         #pd_data = pd.DataFrame(ground_truth10)
         #pd_data.to_csv('groundtruth.csv',index=False,header=False)
         currdata = Update_currdata(currdata, ground_truth10)
-        '''
-
-
     print('uniquesness: ', uniqueness, 'responsiveness: ', responsiveness)
     #print(accus.values())
     print(' ')
@@ -783,7 +805,7 @@ def Trail_ActiveLearning(uniqueness, responsiveness, initial_size):
     #plt.plot(accusHybrid.keys(), accusHybrid.values(), 'o-', label='active learning(uncertainty score)')
     plt.plot(accus.keys(), accus.values(), 'o-', label='hybrid active learning(uncertainty score + entropy)')
     #plt.plot(accusEntropy.keys(), accusEntropy.values(), 'o-', label='active learning(entropy)')
-    #plt.plot(accusR.keys(), accusR.values(), 'o-', label = 'random learning')
+    plt.plot(accusR.keys(), accusR.values(), 'o-', label = 'random learning')
     
     
     plt.legend(loc='best')
@@ -801,7 +823,7 @@ def Trail_ActiveLearning(uniqueness, responsiveness, initial_size):
     #result.append(accusHybrid.values())
     result.append(accus.values())
     #result.append(accusEntropy.values())
-    #result.append(accusR.values())
+    result.append(accusR.values())
     
  
     

@@ -76,13 +76,13 @@ def Make_Selections_Higher_Score(num, predictions, batch):#Entropy
         if (row, col) not in batch:
             batch.append((row, col))
             batch_len += 1
-        i+=1
+        i = (i + 1 if i < (len(predictions)-1) else 0)
 
 
 def Make_Selections_Lower_Score(num, predictions, batch):
     random.shuffle(predictions)
-    #predictions = np.array(predictions)
     '''
+    predictions = np.array(predictions)
     idex = np.lexsort([predictions[:,3]])
     sorted_predictions = predictions[idex, :]
     '''
@@ -97,7 +97,7 @@ def Make_Selections_Lower_Score(num, predictions, batch):
         if (row, col) not in batch:
             batch.append((row, col))
             batch_len += 1
-        i+=1
+        i = (i + 1 if i < (len(predictions)-1) else 0)
 
 
 
@@ -352,8 +352,7 @@ def Simulate_Once(currdata, step, panelty):
     return predictions
 
 
-def Make_Selections_random(num, predictions):
-    batch = []
+def Make_Selections_random(num, predictions, batch):
     batch_index = []
     for i in range(num):
         rand = np.random.randint(len(predictions))
@@ -364,8 +363,6 @@ def Make_Selections_random(num, predictions):
     for index in batch_index:
         batch.append(predictions[index])
 
-
-    return batch
 
 
 
@@ -419,25 +416,24 @@ def Trail_ActiveLearning(uniqueness, responsiveness, initial_size):
     #ground_truth10 = AddNoise(ground_truth_, 0.1)
     #currdata = Initialize_Data(ground_truth10, initial_size)
     data = np.array(Readin_xls('E:\Active_Learning\elife\elife-10047-supp4-v2.xls'))
+    clustering = AgglomerativeClustering(distance_threshold=5, n_clusters=None).fit(data[:, 4:])
+    XY = np.hstack((data, clustering.labels_.reshape(-1,1)))
 
     measured_samples_ = {}
     measured_initial = []
    
-    for sample in data:
+    for sample in XY:
         row = sample[1]-1
         col = sample[0]-1
-        if row == col or (46 - row) == col:
+        #if row == col or (row == 92 and col == 91) or (row == 93 and col == 91):
+        if row == 0 or col == 0:
         #measured_samples_.append((row, col))
             measured_initial.append(sample)
     measured_samples = np.array(measured_initial)
 
-    clustering = AgglomerativeClustering(distance_threshold=10, n_clusters=None).fit(measured_samples[:, 4:])
-    #clustering = AgglomerativeClustering(n_clusters=60).fit(measured_samples[:, 4:])
-    measured_y = clustering.labels_
-
-
-    knn = KNeighborsClassifier(n_neighbors = 5, weights = 'distance').fit(measured_samples[:, 4:], measured_y)
-    ground_truth10 = Construct_Groundtruth(data, 47, 46, knn)
+    current_labels = measured_samples[:,-1].copy().astype(np.int16)
+    knn = KNeighborsClassifier(n_neighbors = 5, weights = 'distance').fit(measured_samples[:, 4:-1], current_labels)
+    ground_truth10 = Update_Groundtruth(XY, 47, 46, knn, measured_samples)
     currdata = Construct_Currdata(measured_samples, 47, 46)
     
     total = len(currdata) * len(currdata[0])
@@ -445,7 +441,8 @@ def Trail_ActiveLearning(uniqueness, responsiveness, initial_size):
     knownnum = CountKnownNum(currdata)
     for i in range(len(currdata)):
         for j in range(len(currdata[0])):
-            if  i == j or (93 - i) == j:
+            #if  i == j or (i == 92 and j == 91) or (i == 93 and j == 91):
+            if i == 0 or j == 0:
                 '''
                 row = (i/2 if i % 2 == 0 else (i - 1)/2)
                 col = (j/2 if j % 2 == 0 else (j - 1)/2)
@@ -460,13 +457,15 @@ def Trail_ActiveLearning(uniqueness, responsiveness, initial_size):
     pd_data.to_csv('initial_data.csv',index=False,header=False)
     clusters_num = []
     P = 1
-    batch_size = int(0.01*total)
+    batch_size = int(total*0.01)
     accus = {}
-    accusR = {}
+    accusReggression = []
 
     vectors = []
     new_added_num = []
 
+    current_labels = measured_samples[:,-1].copy().astype(np.int16)
+    clusters_num.append(len(np.unique(current_labels))/len(np.unique(clustering.labels_)))
 #-------------------------------------------------------------------------------------------------------------------------
 #score
     #currdata = Cons(ground_truth10, 0.02)
@@ -511,10 +510,10 @@ def Trail_ActiveLearning(uniqueness, responsiveness, initial_size):
                 if dictp[label] > maxscore:
                     maxlabel = label
                     maxscore = dictp[label]
-            
+            '''
             if maxscore < curr_resp[row][1]:
                 maxlabel = curr_resp[row][0]
-            
+            '''
             if ground_truth10[row][col] == maxlabel:
                     correct+=1
                     corrects.append(maxscore)
@@ -540,7 +539,8 @@ def Trail_ActiveLearning(uniqueness, responsiveness, initial_size):
         size = min(batch_size, total - knownnum)
         #predictions = np.array(predictions)
         batch = []
-        Make_Selections_Lower_Score(size, predictions, batch)
+        Make_Selections_random(int(size), predictions, batch)
+        #Make_Selections_Higher_Score(max(1, int(size/2)), predictions, batch)
         new_added = []
         for i in range(len(batch)):
             currdata[batch[i][0]][batch[i][1]] = ground_truth10[batch[i][0]][batch[i][1]]
@@ -562,7 +562,7 @@ def Trail_ActiveLearning(uniqueness, responsiveness, initial_size):
                 measured_samples_[(row, col)] = 1
                 new_added.append((row, col))
         new_added_num.append(len(new_added))
-        for sample in data:
+        for sample in XY:
             row = sample[1]-1
             col = sample[0]-1
             if (row, col) in new_added:
@@ -584,22 +584,17 @@ def Trail_ActiveLearning(uniqueness, responsiveness, initial_size):
         zeros = total/4 - once - twice - thriple - quartic
         vector = (zeros*4/total, once*4/total, twice*4/total, thriple*4/total, quartic*4/total)
         vectors.append(vector)
-        #accu = 0.42 * vector[0] + 1 * vector[1] - 0.57 * vector[2] + 6.4 * vector[3] - 21 * vector[4]
+        accuRg = 0.42 * vector[0] + 1 * vector[1] - 0.57 * vector[2] + 6.4 * vector[3] - 21 * vector[4]
+        accusReggression.append(accuRg)
         #accus[knownnum] = accu
         #measured_samples = np.array(measured_samples_)
-        clustering = AgglomerativeClustering(distance_threshold=10, n_clusters=None).fit(measured_samples[:, 4:])
-        #clustering = AgglomerativeClustering(n_clusters=60).fit(measured_samples[:, 4:])
-
-        clusters_num.append(clustering.n_clusters_)
-        measured_y = clustering.labels_
-
-
-        #forest = RandomForestClassifier(n_estimators=int(0.1 * len(measured_samples)), max_depth = 7,
-#                                        max_features=100).fit(measured_samples[:, 4:], measured_y)
-        knn = KNeighborsClassifier(n_neighbors = 5, weights = 'distance').fit(measured_samples[:, 4:], measured_y)
+        
+        current_labels = measured_samples[:,-1].copy().astype(np.int16)
+        knn = KNeighborsClassifier(n_neighbors = 5, weights = 'distance').fit(measured_samples[:, 4:-1], current_labels)
+        clusters_num.append(len(np.unique(current_labels))/len(np.unique(clustering.labels_)))
 
         #currdata = Construct_Currdata(measured_samples, measured_y, 47, 46)
-        ground_truth10 = Construct_Groundtruth(data, 47, 46, knn)
+        ground_truth10 = Update_Groundtruth(XY, 47, 46, knn, measured_samples)
         #pd_data = pd.DataFrame(ground_truth10)
         #pd_data.to_csv('groundtruth.csv',index=False,header=False)
         currdata = Update_currdata(currdata, ground_truth10)
@@ -781,7 +776,7 @@ def Trail_ActiveLearning(uniqueness, responsiveness, initial_size):
     range2 /= total
     '''
     #plt.plot(accusHybrid.keys(), accusHybrid.values(), 'o-', label='active learning(uncertainty score)')
-    plt.plot(accus.keys(), accus.values(), 'o-', label='hybrid active learning(uncertainty score + entropy)')
+    plt.plot(accus.keys(), accus.values(), 'o-', label='active learning(uncertainty score)')
     #plt.plot(accusEntropy.keys(), accusEntropy.values(), 'o-', label='active learning(entropy)')
     #plt.plot(accusR.keys(), accusR.values(), 'o-', label = 'random learning')
     
@@ -789,13 +784,28 @@ def Trail_ActiveLearning(uniqueness, responsiveness, initial_size):
     plt.legend(loc='best')
     plt.show()
 
-    plt.plot(np.arange(len(clusters_num))+1, clusters_num, '^-', label = 'number of phenotypes')
+    plt.plot(np.arange(len(clusters_num))+1, clusters_num, '^-', label = 'percentage of discovered phenotypes')
+    plt.legend(loc='best')
     plt.xlabel('round')
     plt.show()
+    vectors = np.array(vectors)
+    plt.plot(np.arange(len(vectors)), vectors[:, 0], label='unmeasured')
+    plt.plot(np.arange(len(vectors)), vectors[:, 1], label='measured once')
+    plt.plot(np.arange(len(vectors)), vectors[:, 2], label='measured twice')
+    plt.plot(np.arange(len(vectors)), vectors[:, 3], label='measured 3 times')
+    plt.plot(np.arange(len(vectors)), vectors[:, 4], label='measured 4 times')
+    plt.legend(loc='best')
+    plt.title('quads discover rate')
+    plt.show()
+
+
+    plt.ylim(0, 1)
+    plt.legend(loc='best')
+    plt.plot(np.arange(len(accusReggression)), accusReggression, label = 'Reggression accuracy, not real accuracy')
+    plt.show()
     
-    
-    
-    filename = 'test1-thres9-active1.csv'
+
+    filename = 'test-new1.csv'
     result = []
     result.append(accus.keys())
     #result.append(accusHybrid.values())

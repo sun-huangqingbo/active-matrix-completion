@@ -517,15 +517,25 @@ def Trail(uniqueness, responsiveness, initial_size):
             col = key[1]
             dictp = prediction_temp[key]
             maxscore = -10000
+            maxscore2 = -10000
             maxlabel = ''
-            for label in dictp:
-                if dictp[label] > maxscore:
+            if len(dictp) == 1:
+                score_differ = 1000
+                for label in dictp:
                     maxlabel = label
-                    maxscore = dictp[label]
-            
+            else:
+                for label in dictp:
+                    if dictp[label] > maxscore2 and dictp[label] > maxscore:
+                        maxscore2 = maxscore
+                        maxlabel = label
+                        maxscore = dictp[label]
+                    elif dictp[label] > maxscore2 and dictp[label] <= maxscore: 
+                        maxscore2 = dictp[label]
+                score_differ = maxscore - maxscore2
+            '''
             if maxscore < curr_resp[row][1]:
                 maxlabel = curr_resp[row][0]
-            
+            '''
             #score2 = Calculate_TrueFalsth_Sum(prediction_temp[key], maxlabel)
             if ground_truth10[row][col] == maxlabel:
                     correct+=1
@@ -533,7 +543,7 @@ def Trail(uniqueness, responsiveness, initial_size):
             else:
                 mistake.append(maxscore)
             #TF_ratio = Calculate_TrueFalsth_Ratio(prediction_temp[key], maxlabel)
-            uncertain_score = maxscore
+            uncertain_score = score_differ
             #postion_score = Calculate_Position_Score2(row, col, currdata)
             predictions.append([row, col, maxlabel, uncertain_score])
         knownnum = CountKnownNum(currdata)
@@ -543,7 +553,7 @@ def Trail(uniqueness, responsiveness, initial_size):
 
         size = min(batch_size, total - knownnum)
         #selections = Make_Selections_score(size, predictions)
-        selections = Make_Selections_random(size, predictions)
+        selections = Make_Selections_score2(size, predictions)
 
 
         for selection in selections:
@@ -734,8 +744,8 @@ def Trail(uniqueness, responsiveness, initial_size):
 
     
 def main():
-    for u in [0.1]:
-        for r in [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]:
+    for u in [0.4]:
+        for r in [0.9]:
             Trail(u, r, 0.02)
 
 
