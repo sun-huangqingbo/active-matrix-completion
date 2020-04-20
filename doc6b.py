@@ -35,10 +35,10 @@ def plot_dendrogram(model, **kwargs):
     
 def Construct_Currdata(measured_samples, targets_num, conditions_num):
     currdata = []
-    for i in range(targets_num*conditions_num):
+    for i in range(4*targets_num*conditions_num):
         currdata.append(-1)
 
-    currdata = np.array(currdata, dtype='int16').reshape(targets_num, conditions_num) 
+    currdata = np.array(currdata, dtype='int16').reshape(2*targets_num, 2*conditions_num) 
     '''
     for sample, y in zip(measured_samples, measured_y):
         row = sample[1]-1
@@ -50,20 +50,20 @@ def Construct_Currdata(measured_samples, targets_num, conditions_num):
 
 def Construct_Groundtruth(all_samples, targets_num, conditions_num, classifier):
     groundtruth = []
-    for i in range(targets_num*conditions_num):
+    for i in range(4*targets_num*conditions_num):
         groundtruth.append(-1)
 
-    groundtruth = np.array(groundtruth).reshape(targets_num, conditions_num) 
+    groundtruth = np.array(groundtruth).reshape(2*targets_num, 2*conditions_num) 
     labels = classifier.predict(all_samples[:,4:])
     for sample, label in zip(all_samples, labels):
         row = sample[1]-1
         col = sample[0]-1
         groundtruth[row][col] = label
-        '''
+        
         groundtruth[row + targets_num][col] = label
         groundtruth[row][col + conditions_num] = label
         groundtruth[row + targets_num][col + conditions_num] = label
-        
+        '''
         groundtruth[row*2][col*2] = label
         groundtruth[row*2 + 1][col*2] = label
         groundtruth[row*2][col*2 + 1] = label

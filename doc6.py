@@ -320,7 +320,7 @@ def Simulate_Once(currdata, step, panelty):
     for p in prediction_from_col:
         predictions[(p[0], p[1])] = p[2]
     
-    '''
+    
     currdataT = currdata.T
     parameters.clear()
     
@@ -348,7 +348,7 @@ def Simulate_Once(currdata, step, panelty):
                     predictions[(p[1], p[0])][key] = p[2][key]
         else:
             predictions[(p[1], p[0])][key] = p[2]
-    '''
+    
     return predictions
 
 
@@ -413,12 +413,12 @@ def Calculate_entropy(prediction):
     return entropy
 
 
-def Trail_ActiveLearning(uniqueness, responsiveness, initial_size):
+def Trail_ActiveLearning(uniqueness, responsiveness, query_strategy):
     #ground_truth_ = Generating_Truth(100, uniqueness, responsiveness, 150)
     #ground_truth10 = ground_truth_
     #ground_truth10 = AddNoise(ground_truth_, 0.1)
     #currdata = Initialize_Data(ground_truth10, initial_size)
-    data = np.array(Readin_xls('E:\Active_Learning\elife\elife-10047-supp4-v2.xls'))
+    data = np.array(Readin_xls('elife-10047-supp4-v2.xls'))
 
     measured_samples_ = {}
     measured_initial = []
@@ -446,10 +446,6 @@ def Trail_ActiveLearning(uniqueness, responsiveness, initial_size):
     for i in range(len(currdata)):
         for j in range(len(currdata[0])):
             if  i == j or (93 - i) == j:
-                '''
-                row = (i/2 if i % 2 == 0 else (i - 1)/2)
-                col = (j/2 if j % 2 == 0 else (j - 1)/2)
-                '''
                 row = (i - 47 if i > 46 else i)
                 col = (j - 46 if j > 45 else j)
                 currdata[i][j] = ground_truth10[i][j]
@@ -540,7 +536,15 @@ def Trail_ActiveLearning(uniqueness, responsiveness, initial_size):
         size = min(batch_size, total - knownnum)
         #predictions = np.array(predictions)
         batch = []
-        Make_Selections_Lower_Score(size, predictions, batch)
+        if query_strategy == 'active':
+            selections = Make_Selections_Lower_Score(int(size/2), predictions)
+            for p in predictions:
+                predictions = predictions.delete(p)
+            selections2 = Make_Selections_Higher_Score(min(int(size/2),1), predictions)
+        elif query_strategy == 'random':
+            elections = Make_Selections_Lower_Score(size, predictions)
+        else:
+            raise ValueError("query strategy error!")
         new_added = []
         for i in range(len(batch)):
             currdata[batch[i][0]][batch[i][1]] = ground_truth10[batch[i][0]][batch[i][1]]
@@ -551,10 +555,7 @@ def Trail_ActiveLearning(uniqueness, responsiveness, initial_size):
             if batch[i][1] > 45:
                 col = batch[i][1] - 46
             else: col = batch[i][1]
-            '''
-            row = (batch[i][0]/2 if batch[i][0] % 2 == 0 else (batch[i][0] - 1)/2 )
-            col = (batch[i][1]/2 if batch[i][1] % 2 == 0 else (batch[i][1] - 1)/2 )
-            '''
+
             batch[i] = (row, col)
             if (row, col) in measured_samples_:
                 measured_samples_[(row, col)] += 1
@@ -592,7 +593,6 @@ def Trail_ActiveLearning(uniqueness, responsiveness, initial_size):
 
         clusters_num.append(clustering.n_clusters_)
         measured_y = clustering.labels_
-
 
         #forest = RandomForestClassifier(n_estimators=int(0.1 * len(measured_samples)), max_depth = 7,
 #                                        max_features=100).fit(measured_samples[:, 4:], measured_y)
@@ -771,46 +771,37 @@ def Trail_ActiveLearning(uniqueness, responsiveness, initial_size):
 
 
     print('uniquesness: ', uniqueness, 'responsiveness: ', responsiveness)
-    #print(accus.values())
-    print(' ')
-    print(' ')
-    '''
-    range1 = np.array(accus.keys())
-    range1 /= total
-    range2 = np.array(accusR.keys())
-    range2 /= total
-    '''
-    #plt.plot(accusHybrid.keys(), accusHybrid.values(), 'o-', label='active learning(uncertainty score)')
-    plt.plot(accus.keys(), accus.values(), 'o-', label='hybrid active learning(uncertainty score + entropy)')
-    #plt.plot(accusEntropy.keys(), accusEntropy.values(), 'o-', label='active learning(entropy)')
-    #plt.plot(accusR.keys(), accusR.values(), 'o-', label = 'random learning')
-    
-    
-    plt.legend(loc='best')
-    plt.show()
 
-    plt.plot(np.arange(len(clusters_num))+1, clusters_num, '^-', label = 'number of phenotypes')
-    plt.xlabel('round')
-    plt.show()
-    
+
     
     
     filename = 'test1-thres9-active1.csv'
     result = []
     result.append(accus.keys())
-    #result.append(accusHybrid.values())
     result.append(accus.values())
-    #result.append(accusEntropy.values())
-    #result.append(accusR.values())
+    return result, vectors
+
     
  
     
-    pd_data = pd.DataFrame(result)
-    pd_data.to_csv(filename,index=False,header=False)
+    
 
     
 def main():
-    Trail_ActiveLearning(0, 0, 0.02)
+    active_result, active_vec = Trail_ActiveLearning(0, 0, 'active')
+    random_result, random_vec = Trail_ActiveLearning(0, 0, 'random')
+    result = []
+    for r in active_result:
+        result.append(r)
+    for r in random_result:
+        result.append(r)
+    pd_data = pd.DataFrame(result)
+    
+    pd_data.to_csv('real_experiment_accu',index=False,header=False)
+    vectors = [active_vec, random_vec]
+    pd_data = pd.DataFrame(result)
+    pd_data.to_csv('real_experiment_vec',index=False,header=False)
+
 
 
 if __name__ == "__main__":
