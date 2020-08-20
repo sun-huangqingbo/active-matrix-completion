@@ -7,10 +7,11 @@ from scipy.cluster.hierarchy import dendrogram
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
 from sklearn.neighbors import KNeighborsClassifier
-
+from sklearn.metrics import accuracy_score
 
 def Readin_xls(filename):
     return pd.read_excel(filename, header = 0, index=False)
+    
 
 def plot_dendrogram(model, **kwargs):
     # Create linkage matrix and then plot the dendrogram
@@ -55,6 +56,8 @@ def Construct_Groundtruth(all_samples, targets_num, conditions_num, classifier):
 
     groundtruth = np.array(groundtruth).reshape(2*targets_num, 2*conditions_num) 
     labels = classifier.predict(all_samples[:,4:])
+    # labels2 = clf.predict(all_samples[:,4:])
+    # print(accuracy_score(labels, labels2))
     for sample, label in zip(all_samples, labels):
         row = sample[1]-1
         col = sample[0]-1

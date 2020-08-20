@@ -4,13 +4,12 @@ import numpy as np
 # y: u, x: r
 
 
-ST90 = np.load(r'Active_Learning\heatmap\hybrid90.npy')/10000
-ST100 = np.load(r'Active_Learning\heatmap\hybrid100.npy')/10000
-RT90 = np.load(r'Active_Learning\heatmap\random90.npy')/10000
-RT100 = np.load(r'Active_Learning\heatmap\random100.npy')/10000
-M90 = RT90 - ST90
+softimpute90 = np.load(r'Active_Learning/feature90AL.npy')
+softimpute100 = np.load(r'Active_Learning/feature100AL.npy')
+onebit90 = np.load(r'Active_Learning/feature90RAND.npy')
+onebit100 = np.load(r'Active_Learning/feature100RAND.npy')
 
-M100 = RT100 - ST100
+
 
 
 def make_heatmap(m, sig, center):
@@ -28,10 +27,10 @@ def make_heatmap(m, sig, center):
     # Draw the heatmap with the mask and correct aspect ratio
     sns.heatmap(m, cmap=cmap, center=center, annot = annotate,
                 square=True, linewidths=.5, cbar = False, vmin = -0.1, vmax = 0.8, fmt=".0%")
-    plt.xticks(np.arange(0, 9)+0.5, ['10%', '20%', '30%', '40%', '50%', '60%', '70%', '80%', '90%'] )
-    plt.yticks(np.arange(0, 9)+0.5, ['10%', '20%', '30%', '40%', '50%', '60%', '70%', '80%', '90%'], rotation=0)
+    plt.xticks(np.arange(0, 4)+0.5, ['20%', '40%', '60%', '80%' ] )
+    plt.yticks(np.arange(0, 4)+0.5, ['20%', '40%', '60%', '80%'], rotation=0)
     plt.xlabel('Responsive')
     plt.ylabel('Unique')
     plt.show()
-for m, sig, center in zip([ST90, ST100, RT90, RT100, M90, M100], [True, True, True, True, False, False], [0.5, 0.5, 0.5, 0.5, 0, 0]):
+for m, sig, center in zip([softimpute90, softimpute100, onebit90, onebit100], [True, True, True, True, True, True], [0.5, 0.5, 0.5, 0.5, 0.5, 0.5]):
     make_heatmap(m, sig, center)
