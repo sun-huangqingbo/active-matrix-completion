@@ -1,2 +1,0 @@
-# Active-Learning
-Active Leaning.
